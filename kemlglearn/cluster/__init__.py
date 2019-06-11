@@ -22,7 +22,8 @@ from .KernelKMeans import KernelKMeans
 from .KModes import KModes
 from .KPrototypes import KPrototypes
 from .KMedoidsFlexible import KMedoidsFlexible
+from .IKMeansMinusPlus import IKMeansMinusPlus
 
 __all__ = ['GlobalKMeans',
            'Leader', 'KernelKMeans',
-           'KModes', 'KPrototypes', 'KMedoidsFlexible']
+           'KModes', 'KPrototypes', 'KMedoidsFlexible', 'IKMeansMinusPlus']

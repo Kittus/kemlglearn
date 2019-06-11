@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 # from kemlglearn.cluster.consensus import SimpleConsensusClustering
 # from sklearn.metrics.cluster import normalized_mutual_info_score
 
-X, y_data = make_blobs(n_samples=[25, 200], n_features=2, centers=[[1,1], [0,0]], random_state=2, cluster_std=[0.1, 0.4])
+# X, y_data = make_blobs(n_samples=[25, 200], n_features=2, centers=[[1,1], [0,0]], random_state=2, cluster_std=[0.1, 0.4])
 # X , y_data= load_iris(return_X_y=True)
 
 # X, y_data = make_circles(n_samples=1000, noise=0.5, random_state=4, factor=0.5)
@@ -140,37 +140,65 @@ X, y_data = make_blobs(n_samples=[25, 200], n_features=2, centers=[[1,1], [0,0]]
 # plt.scatter(X[:, 0], X[:, 1], c=y_data)
 #
 # plt.show()
-from numpy.random import normal
+# from numpy.random import normal
+# import numpy as np
+# sc1=75
+# v1=0.1
+# sc2=75
+# v2=0.9
+# X = np.zeros((sc1 + sc2, 2))
+# X[0:sc1, 0] = normal(loc=0.0, scale=v1, size=sc1)
+# X[0:sc1, 1] = normal(loc=0.0, scale=v2, size=sc1)
+# X[sc1:, 0] = normal(loc=1, scale=v1, size=sc2)
+# X[sc1:, 1] = normal(loc=0.0, scale=v2, size=sc2)
+# dlabels = np.zeros(sc1 + sc2)
+# dlabels[sc1:] = 1
+#
+# from .KMedoidsFlexible import KMedoidsFlexible
+#
+# km = KMedoidsFlexible(n_clusters=2)
+#
+# labels = km.fit_predict(X)
+#
+# fig = plt.figure()
+#
+# ax = fig.add_subplot(111)
+# plt.scatter(X[:, 0], X[:, 1], c=labels)
+# medoids = km.cluster_medoids_
+#
+# for i, m in enumerate(medoids):
+#     plt.scatter(medoids[i, 0], medoids[i, 1], c=i, marker='x', s=200)
+#
+# plt.show()
+#
+# labels = km.predict(X)
+#
+# print(labels)
+
+
+from IKMeansMinusPlus import IKMeansMinusPlus
+import pandas as pd
 import numpy as np
-sc1=75
-v1=0.1
-sc2=75
-v2=0.9
-X = np.zeros((sc1 + sc2, 2))
-X[0:sc1, 0] = normal(loc=0.0, scale=v1, size=sc1)
-X[0:sc1, 1] = normal(loc=0.0, scale=v2, size=sc1)
-X[sc1:, 0] = normal(loc=1, scale=v1, size=sc2)
-X[sc1:, 1] = normal(loc=0.0, scale=v2, size=sc2)
-dlabels = np.zeros(sc1 + sc2)
-dlabels[sc1:] = 1
+from sklearn import metrics
 
-from .KMedoidsFlexible import KMedoidsFlexible
 
-km = KMedoidsFlexible(n_clusters=2)
+def purity(trues, preds):
+    return sum(
+        [max(
+            [len([i for i in range(len(preds)) if preds[i] == pred and trues[i] == true]) for true in set(trues)]
+        ) for pred in set(preds)]) / len(trues)
 
-labels = km.fit_predict(X)
 
-fig = plt.figure()
+df = pd.read_csv("C:/Users/Marc/Desktop/MAI/Q2/SEL/PW2/Data/Iris/iris.csv", header=None).values
+X = df[:, :-1]
+Y = df[:, -1]
 
-ax = fig.add_subplot(111)
-plt.scatter(X[:, 0], X[:, 1], c=labels)
-medoids = km.cluster_medoids_
+ikmmp = IKMeansMinusPlus(n_clusters=3)
 
-for i, m in enumerate(medoids):
-    plt.scatter(medoids[i, 0], medoids[i, 1], c=i, marker='x', s=200)
+labels = ikmmp.fit_predict(X)
 
-plt.show()
+print("Purity: {}; Silhouette: {};".format(purity(Y, labels),
+                                            metrics.silhouette_score(X, labels)
+                                            ))
 
-labels = km.predict(X)
 
-print(labels)

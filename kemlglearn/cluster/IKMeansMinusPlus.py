@@ -135,6 +135,14 @@ class IKMeansMinusPlus(object):
 
         return self
 
+    def fit_predict(self, X):
+        """Compute cluster centroids and predict cluster index for each sample.
+
+        Convenience method; equivalent to calling fit(X) followed by
+        predict(X).
+        """
+        return self.fit(X).labels_
+
     def predict(self, X):
         assert self.cluster_centers_ is not None, "Model not yet fitted."
         return _labels_inertia(X, self.cluster_centers_)[0]
