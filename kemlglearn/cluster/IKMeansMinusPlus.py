@@ -47,8 +47,7 @@ def kmeans(X, K, maxLoops):
         loop = loop + 1
 
         # Re-calculate centroids
-        centroids = np.zeros([K, col], dtype=float)
-        centroids = calculate_centroids(X, centroids, clusters, K, rows)
+        centroids = _calculate_centers(X, centroids, clusters)
 
         # Calculate distances to new centroids
         newClusters, errorSum = _labels_inertia(X, centroids)
@@ -85,35 +84,26 @@ def select_first_seeds (np_df, edm, K, rows):
     return centroidIndexes
 
 
-def calculate_centroids (np_df, newCentroids, clusters, K, rows):
+def _calculate_centers(X, cluster_centers, labels):
+    new_cluster_centers = np.zeros(cluster_centers.shape, dtype=float)
 
-    for clusterInd in range(K):
-        qty = 0
-        for rowInd in range(rows):
-            # If the element belongs to this cluster:
-            if (clusters[rowInd] == clusterInd):
-                # Sum all the values of the elements of each cluster
-                qty = qty + 1
-                newCentroids[clusterInd] = newCentroids[clusterInd] + np_df[rowInd]
+    for clust_num in range(cluster_centers.shape[0]):
+        new_cluster_centers[clust_num] = np.mean(X[labels == clust_num], axis=0)
 
-        # Divide the sum by the sum of the elements to compute the mean
-        newCentroids[clusterInd] = newCentroids[clusterInd] / qty
-
-    return newCentroids
+    return new_cluster_centers
 
 
 def _labels_inertia(X, centroids):
     """Calculate labels and cost function given a matrix of points and
     a list of centroids for the k-modes algorithm.
     """
+    inertia = 0
+    labels = np.empty(X.shape[0], dtype='int64')
 
-    npoints = X.shape[0]
-    inertia = 0.
-    labels = np.empty(npoints, dtype='int64')
-    for ipoint, curpoint in enumerate(X):
-        diss = np.sum((centroids - curpoint) ** 2, axis=1)
+    for i, point in enumerate(X):
+        diss = np.sum((centroids - point) ** 2, axis=1)
         clust = np.argmin(diss)
-        labels[ipoint] = clust
+        labels[i] = clust
         inertia += diss[clust]
 
     return labels, inertia
@@ -139,7 +129,7 @@ class IKMeansMinusPlus(object):
         """Compute cluster centroids and predict cluster index for each sample.
 
         Convenience method; equivalent to calling fit(X) followed by
-        predict(X).
+        predict(X), but more efficient
         """
         return self.fit(X).labels_
 
