@@ -190,13 +190,13 @@ def purity(trues, preds):
 
 
 df = pd.read_csv("C:/Users/Marc/Desktop/MAI/Q2/SEL/PW2/Data/Iris/iris.csv", header=None).values
-X = df[:, :-1]
+X = df[:, :-1].astype(float)
 Y = df[:, -1]
 
 ikmmp = IKMeansMinusPlus(n_clusters=3)
 
 labels = ikmmp.fit_predict(X)
-
+print("Inertia: {}; Iter: {};".format(ikmmp.inertia_, ikmmp.n_iter_))
 print("Purity: {}; Silhouette: {};".format(purity(Y, labels),
                                             metrics.silhouette_score(X, labels)
                                             ))
