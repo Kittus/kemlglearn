@@ -195,6 +195,19 @@ Y = df[:, -1]
 
 ikmmp = IKMeansMinusPlus(n_clusters=3)
 
+print("----- Initialization -----")
+labels = ikmmp.fit_predict_ini(X)
+print("Inertia: {}; Iter: {};".format(ikmmp.inertia_, ikmmp.n_iter_))
+print("Purity: {}; Silhouette: {};".format(purity(Y, labels),
+                                            metrics.silhouette_score(X, labels)
+                                            ))
+print("----- Initial K-means -----")
+labels = ikmmp.fit_predict_kmeans(X)
+print("Inertia: {}; Iter: {};".format(ikmmp.inertia_, ikmmp.n_iter_))
+print("Purity: {}; Silhouette: {};".format(purity(Y, labels),
+                                            metrics.silhouette_score(X, labels)
+                                            ))
+print("------ I-K-means+- ------")
 labels = ikmmp.fit_predict(X)
 print("Inertia: {}; Iter: {};".format(ikmmp.inertia_, ikmmp.n_iter_))
 print("Purity: {}; Silhouette: {};".format(purity(Y, labels),

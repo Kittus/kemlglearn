@@ -71,19 +71,31 @@ def _calculate_centers(X, cluster_centers, labels):
 
 
 def _labels_inertia(X, cluster_centers):
-    """Calculate labels and the inertia (cost) function given a matrix of points and
-    a list of centroids for the k-means algorithm.
+    """Calculate labels and the inertia (cost) functions given a matrix of points and
+    a list of centroids for the k-means algorithm. Inertia is divided in clusters and second labels are computed.
     """
-    inertia = 0
+    inertias = np.zeros([cluster_centers.shape[0], 1])
     labels = np.empty(X.shape[0], dtype='int64')
+    second_labels = np.empty(X.shape[0], dtype='int64')
 
     for i, point in enumerate(X):
         diss = np.sum((cluster_centers - point) ** 2, axis=1)
-        clust = np.argmin(diss)
-        labels[i] = clust
-        inertia += diss[clust]
+        clusts = np.argsort(diss)
+        labels[i] = clusts[0]
+        second_labels[i] = clusts[1]
+        inertias[clusts[0]] += diss[clusts[0]]
 
-    return labels, inertia
+    return labels, second_labels, inertias
+
+
+def kmeans_iter(X, labels, cluster_centers):
+    """Single iteration of the k-means algorithm with divided inertias per cluster and second labels."""
+    # Re-calculate centers with new labels
+    cluster_centers = _calculate_centers(X, cluster_centers, labels)
+    # Calculate new labels and inertia (assignation and cost) for the new centres
+    new_labels, second_labels, inertias = _labels_inertia(X, cluster_centers)
+
+    return cluster_centers, new_labels, second_labels, inertias
 
 
 def kmeans(X, n_clusters, max_iter):
@@ -93,22 +105,46 @@ def kmeans(X, n_clusters, max_iter):
     # Initialize centers using the UNC approach
     cluster_indexes = _unc_initialization(X, n_clusters)
     cluster_centers = X[cluster_indexes]
-    labels, inertia = _labels_inertia(X, cluster_centers)
+    new_labels, second_labels, inertias = _labels_inertia(X, cluster_centers)
     n_iter = 0
-    new_labels = np.ones(labels.shape)
+    labels = np.ones(new_labels.shape)
 
     while np.array_equal(new_labels, labels) is False and n_iter < max_iter:
-        # Assign old pointsInCluster
-        if n_iter > 0:
-            labels = new_labels
-        # Re-calculate centers with new labels
-        cluster_centers = _calculate_centers(X, cluster_centers, labels)
-        # Calculate new labels and inertia (assignation and cost) for the new centres
-        new_labels, inertia = _labels_inertia(X, cluster_centers)
-
+        # Update labels from previous iteration
+        labels = new_labels
+        # Compute the k-means iteration and increment iteration
+        cluster_centers, new_labels, second_labels, inertias = kmeans_iter(X, labels, cluster_centers)
         n_iter += 1
 
-    return cluster_centers, new_labels, inertia, n_iter
+    return cluster_centers, new_labels, second_labels, inertias, n_iter
+
+
+def _cost(cluster_index, inertias, dist_sec):
+    return np.sum(dist_sec ** 2) - inertias[cluster_index]
+
+
+def _gain(cluster_index, inertias):
+    alfa = 3/4
+    return alfa * inertias[cluster_index]
+
+
+def _is_adjacent(cluster_index1, cluster_index2, labels, second_labels):
+    return cluster_index1 in second_labels[labels == cluster_index2]
+
+
+def _is_strong_adjacent(cluster_index1, cluster_index2, labels, second_labels):
+    return _is_adjacent(cluster_index1, cluster_index2, labels, second_labels) and \
+           _is_adjacent(cluster_index2, cluster_index1, labels, second_labels)
+
+
+def ikmeansminusplus(X, n_clusters, max_iter):
+    cluster_centers, labels, second_labels, inertias, n_iter = kmeans(X, n_clusters, max_iter)
+
+    dists2 = np.linalg.norm(X - cluster_centers[second_labels], axis=1)
+    cost = _cost(0, inertias, dists2[labels == 0])
+    gain = _gain(1, inertias)
+
+    return cluster_centers, labels, inertias, n_iter
 
 
 class IKMeansMinusPlus(object):
@@ -117,13 +153,24 @@ class IKMeansMinusPlus(object):
         self.max_iter = max_iter
         self.cluster_centers_ = None
         self.labels_ = None
-        # self.cluster_sizes_ = None
         self.inertia_ = None
+        self.inertias_ = None
         self.n_iter_ = None
 
     def fit(self, X):
-        self.cluster_centers_, self.labels_, self.inertia_, self.n_iter_ = \
-            kmeans(X, self.n_clusters, self.max_iter)
+        """Compute i-k-means-+ clustering.
+
+        Parameters
+        ----------
+        X : array-like, shape=[n_samples, n_features]
+
+        Returns
+        -------
+        self : this object so that the operation can be concatenated
+        """
+        self.cluster_centers_, self.labels_, self.inertias_, self.n_iter_ = \
+            ikmeansminusplus(X, self.n_clusters, self.max_iter)
+        self.inertia_ = sum(self.inertias_)
 
         return self
 
@@ -136,5 +183,33 @@ class IKMeansMinusPlus(object):
         return self.fit(X).labels_
 
     def predict(self, X):
+        """Predict the closest cluster each sample in X belongs to.
+
+        Parameters
+        ----------
+        X : array-like, shape = [n_samples, n_features]
+            New data to predict.
+
+        Returns
+        -------
+        labels : array, shape [n_samples,]
+            Index of the cluster each sample belongs to.
+        """
         assert self.cluster_centers_ is not None, "Model not yet fitted."
         return _labels_inertia(X, self.cluster_centers_)[0]
+
+    def fit_predict_ini(self, X):
+        cluster_indexes = _unc_initialization(X, self.n_clusters)
+        cluster_centers = X[cluster_indexes]
+        self.labels_, _, self.inertias_ = _labels_inertia(X, cluster_centers)
+        self.n_iter_ = 0
+        self.inertia_ = sum(self.inertias_)
+
+        return self.labels_
+
+    def fit_predict_kmeans(self, X):
+        self.cluster_centers_, self.labels_, _, self.inertias_, self.n_iter_ = \
+            kmeans(X, self.n_clusters, self.max_iter)
+        self.inertia_ = sum(self.inertias_)
+
+        return self.labels_
