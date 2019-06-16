@@ -120,24 +120,83 @@ def kmeans(X, n_clusters, max_iter):
 
 
 def _cost(cluster_index, inertias, dist_sec):
+    """Cost function heuristic that estimates the cost of removing the cluster."""
     return np.sum(dist_sec ** 2) - inertias[cluster_index]
 
 
 def _gain(cluster_index, inertias):
+    """Gain function heuristic that estimates the gain of dividing the cluster into two."""
     alfa = 3/4
     return alfa * inertias[cluster_index]
 
 
 def _is_adjacent(cluster_index1, cluster_index2, labels, second_labels):
+    """Given two clusters and the labels for the two closest centers to each point, determine if the first is adjacent
+    to the second one. This means that an element assigned to the second has as second closest center the first one."""
     return cluster_index1 in second_labels[labels == cluster_index2]
 
 
 def _is_strong_adjacent(cluster_index1, cluster_index2, labels, second_labels):
+    """Given two clusters and labels for the two closest centers, determine if they are strong adjacent, this
+    meaning one being adjacent to the other and the other way around."""
     return _is_adjacent(cluster_index1, cluster_index2, labels, second_labels) and \
            _is_adjacent(cluster_index2, cluster_index1, labels, second_labels)
 
 
+def tkmeans(X, n_clusters, C_i, C_j, cluster_centers, labels, second_labels):
+    """Modification to the classic k-means algorithm that only updates the clusters and labels of the points detected
+    as active, so that it is more efficient. This can be applied in i-k-means-+ when eliminating and dividing clusters.
+    The exact definition from the i-k-means-+ paper proposal has been followed.
+    """
+    # Step 1
+    AC = {C_i, C_j}
+    ACAdj = set([cluster for cluster in range(n_clusters) if _is_adjacent(cluster, C_j, labels, second_labels)])
+    AP = set(np.array(range(X.shape[0]))[labels == C_j or second_labels == C_j])
+
+    cluster_centers[C_j] = random.choice(X[labels == C_i])
+    labels, second_labels, inertias = _labels_inertia(X, cluster_centers)
+
+    # Step 2
+    while len(AC) > 0:
+        for ac in AC:
+            for cluster in range(n_clusters):
+                if _is_adjacent(cluster, ac, labels, second_labels):
+                    ACAdj.add(cluster)
+
+        PotAC = set()
+        AP = AP.union(set(np.array(range(X.shape[0]))[labels in AC or second_labels in AC]))
+
+        # Step 3
+        for ap in AP:
+            diss = np.sum((cluster_centers - X[ap]) ** 2, axis=1)
+            clusts = np.argsort(diss)
+            clusts = clusts[clusts in AC or clusts in ACAdj]
+
+            if labels[ap] != clusts[0]:
+                PotAC.add(labels[ap])
+                PotAC.add(clusts[0])
+                labels[ap] = clusts[0]
+
+            second_labels[ap] = clusts[1]
+
+        # Step 4
+        cluster_centers = _calculate_centers(X, cluster_centers, labels)
+
+        # Step 5
+        AC = PotAC
+        AP = set()
+        ACAdj = set()
+
+    labels, second_labels, inertias = _labels_inertia(X, cluster_centers)
+    return cluster_centers, labels, second_labels, inertias
+
+
 def ikmeansminusplus(X, n_clusters, max_iter):
+    """Main algorithm of the class. It works as an extention of k-means, by trying to improve the obtained results
+    in a sort of post-processing stage where clusters are being removed and others divided in two parts. The initial
+    k-means execution is initialized using UNC approach, and after that each iteration uses t-k-means instead.
+    """
+
     # Produce first solution with classic k-means and UNC initialization
     cluster_centers, labels, second_labels, inertias, n_iter = kmeans(X, n_clusters, max_iter)
 
@@ -148,54 +207,68 @@ def ikmeansminusplus(X, n_clusters, max_iter):
     unmatchable = np.zeros([n_clusters, n_clusters], dtype=bool)
 
     # Repeat until end is reached
-    while success <= n_clusters / 2:
+    finished = False
+
+    while success <= n_clusters / 2 and not finished:
         # Select cluster S_i to divide
         S_i = None
+        S_j = None
 
         while S_i is None:
             sorted_ind_gain = sorted(list(range(n_clusters)), key=lambda x: _gain(x, inertias), reverse=True)
 
             for pos, c_i in enumerate(sorted_ind_gain):
                 if pos > (n_clusters - 1) / 2:
-                    return  # k/2 clusters have a gain larger than S_i or no S_i available
+                    # k/2 clusters have a gain larger than S_i or no S_i available
+                    return cluster_centers, labels, inertias, success
                 if not indivisible[c_i]:
                     S_i = c_i
                     break
 
+            if finished:
+                break
+
             # Select cluster S_j to eliminate
-            S_j = None
             dists2 = np.linalg.norm(X - cluster_centers[second_labels], axis=1)
             sorted_ind_cost = sorted(list(range(n_clusters)), key=lambda x: _cost(x, inertias, dists2[labels == x]))
+            goback = False
 
             for pos, c_i in enumerate(sorted_ind_cost):
-                if pos == n_clusters - 1:
-                    return  # No S_j available for this S_i
                 if pos > (n_clusters - 1) / 2:
-                    # k/2 clusters have cost smaller than S_j
-                    indivisible[S_i] = True
-                    # Go back to S_i selection
-                    S_i = None
-                    break
+                    goback = True
                 if c_i != S_i and _cost(c_i, inertias, dists2[labels == c_i]) < _gain(S_i, inertias) \
                         and not unmatchable[S_i, c_i] and not _is_adjacent(S_i, c_i, labels, second_labels) \
                         and not _is_adjacent(c_i, S_i, labels, second_labels) and not irremovable[c_i]:
                     S_j = c_i
                     break
 
+            if S_j is None:
+                # No S_j available for this S_i
+                return cluster_centers, labels, inertias, success
+            if goback:
+                # k/2 clusters have cost smaller than S_j
+                indivisible[S_i] = True
+                # Go back to S_i selection
+                S_i = None
+                break
+
         # Apply changes and t-k-means
-        cluster_centers2 = cluster_centers
-        cluster_centers2[S_j] = random.choice(X[labels == S_i])
-        new_labels2, second_labels2, inertias2 = _labels_inertia(X, cluster_centers2)
-        n_iter = 0
-        labels2 = np.ones(new_labels2.shape)
 
-        while np.array_equal(new_labels2, labels2) is False and n_iter < max_iter:
-            # Update labels from previous iteration
-            labels2 = new_labels2
-            # Compute the k-means iteration and increment iteration
-            cluster_centers2, new_labels2, second_labels2, inertias2 = kmeans_iter(X, labels2, cluster_centers2)
-            n_iter += 1
+        # cluster_centers2 = cluster_centers
+        # cluster_centers2[S_j] = random.choice(X[labels == S_i])
+        # new_labels2, second_labels2, inertias2 = _labels_inertia(X, cluster_centers2)
+        # labels2 = np.ones(new_labels2.shape)
+        #
+        # while np.array_equal(new_labels2, labels2) is False and n_iter < max_iter:
+        #     # Update labels from previous iteration
+        #     labels2 = new_labels2
+        #     # Compute the k-means iteration and increment iteration
+        #     cluster_centers2, new_labels2, second_labels2, inertias2 = kmeans_iter(X, labels2, cluster_centers2)
 
+        cluster_centers2, labels2, second_labels2, inertias2 = \
+            tkmeans(X, n_clusters, S_i, S_j, cluster_centers, labels, second_labels)
+
+        # Define consequences of the changes
         if sum(inertias2) > sum(inertias):
             unmatchable[S_i, S_j] = True
         else:
@@ -212,10 +285,43 @@ def ikmeansminusplus(X, n_clusters, max_iter):
             cluster_centers, labels, second_labels, inertias = cluster_centers2, labels2, second_labels2, inertias2
             success += 1
 
-    return cluster_centers, labels, inertias, n_iter
+    return cluster_centers, labels, inertias, success
 
 
 class IKMeansMinusPlus(object):
+
+    """ I-K-means-+ clustering algorithm for numerical data.
+
+    Parameters
+    -----------
+    n_clusters : int, optional, default: 3
+        The number of clusters to form as well as the number of
+        centers to generate.
+
+    max_iter : int, optional, default: 100
+        Maximum number of iterations of the initial k-means algorithm.
+
+    Attributes
+    ----------
+    cluster_centers_ : array, [n_clusters, n_features]
+        Feature-space points of the cluster's centers
+
+    labels_ : array, [n_features]
+        Labels of each point
+
+    inertias_ : array, [n_clusters]
+        Clustering inertia, defined as the sum distance of all points to
+        their respective cluster centers, for each of the centers.
+
+    inertia_ : float
+        Clustering inertia, defined as the sum distance of all points to
+        their respective cluster centers.
+
+    n_iter_ : int
+        Number of iterations used for the algorithm of the I-k-means-+
+
+    """
+
     def __init__(self, n_clusters=3, max_iter=100):
         self.n_clusters = n_clusters
         self.max_iter = max_iter
@@ -267,6 +373,9 @@ class IKMeansMinusPlus(object):
         return _labels_inertia(X, self.cluster_centers_)[0]
 
     def fit_predict_ini(self, X):
+        """ Fits and predicts but only using the UNC initialization stage of the algorithm.
+            For testing purposes.
+        """
         cluster_indexes = _unc_initialization(X, self.n_clusters)
         cluster_centers = X[cluster_indexes]
         self.labels_, _, self.inertias_ = _labels_inertia(X, cluster_centers)
@@ -276,6 +385,9 @@ class IKMeansMinusPlus(object):
         return self.labels_
 
     def fit_predict_kmeans(self, X):
+        """ Fits and predicts but only using the UNC initialization and initial k-means stage of the algorithm.
+            For testing purposes.
+        """
         self.cluster_centers_, self.labels_, _, self.inertias_, self.n_iter_ = \
             kmeans(X, self.n_clusters, self.max_iter)
         self.inertia_ = sum(self.inertias_)
