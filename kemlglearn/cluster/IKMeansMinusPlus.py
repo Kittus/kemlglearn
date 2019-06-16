@@ -138,11 +138,79 @@ def _is_strong_adjacent(cluster_index1, cluster_index2, labels, second_labels):
 
 
 def ikmeansminusplus(X, n_clusters, max_iter):
+    # Produce first solution with classic k-means and UNC initialization
     cluster_centers, labels, second_labels, inertias, n_iter = kmeans(X, n_clusters, max_iter)
 
-    dists2 = np.linalg.norm(X - cluster_centers[second_labels], axis=1)
-    cost = _cost(0, inertias, dists2[labels == 0])
-    gain = _gain(1, inertias)
+    # Variable initialization
+    success = 0
+    indivisible = [False] * n_clusters
+    irremovable = [False] * n_clusters
+    unmatchable = np.zeros([n_clusters, n_clusters], dtype=bool)
+
+    # Repeat until end is reached
+    while success <= n_clusters / 2:
+        # Select cluster S_i to divide
+        S_i = None
+
+        while S_i is None:
+            sorted_ind_gain = sorted(list(range(n_clusters)), key=lambda x: _gain(x, inertias), reverse=True)
+
+            for pos, c_i in enumerate(sorted_ind_gain):
+                if pos > (n_clusters - 1) / 2:
+                    return  # k/2 clusters have a gain larger than S_i or no S_i available
+                if not indivisible[c_i]:
+                    S_i = c_i
+                    break
+
+            # Select cluster S_j to eliminate
+            S_j = None
+            dists2 = np.linalg.norm(X - cluster_centers[second_labels], axis=1)
+            sorted_ind_cost = sorted(list(range(n_clusters)), key=lambda x: _cost(x, inertias, dists2[labels == x]))
+
+            for pos, c_i in enumerate(sorted_ind_cost):
+                if pos == n_clusters - 1:
+                    return  # No S_j available for this S_i
+                if pos > (n_clusters - 1) / 2:
+                    # k/2 clusters have cost smaller than S_j
+                    indivisible[S_i] = True
+                    # Go back to S_i selection
+                    S_i = None
+                    break
+                if c_i != S_i and _cost(c_i, inertias, dists2[labels == c_i]) < _gain(S_i, inertias) \
+                        and not unmatchable[S_i, c_i] and not _is_adjacent(S_i, c_i, labels, second_labels) \
+                        and not _is_adjacent(c_i, S_i, labels, second_labels) and not irremovable[c_i]:
+                    S_j = c_i
+                    break
+
+        # Apply changes and t-k-means
+        cluster_centers2 = cluster_centers
+        cluster_centers2[S_j] = random.choice(X[labels == S_i])
+        new_labels2, second_labels2, inertias2 = _labels_inertia(X, cluster_centers2)
+        n_iter = 0
+        labels2 = np.ones(new_labels2.shape)
+
+        while np.array_equal(new_labels2, labels2) is False and n_iter < max_iter:
+            # Update labels from previous iteration
+            labels2 = new_labels2
+            # Compute the k-means iteration and increment iteration
+            cluster_centers2, new_labels2, second_labels2, inertias2 = kmeans_iter(X, labels2, cluster_centers2)
+            n_iter += 1
+
+        if sum(inertias2) > sum(inertias):
+            unmatchable[S_i, S_j] = True
+        else:
+            irremovable[S_i] = True
+            irremovable[S_j] = True
+
+            for cluster in range(n_clusters):
+                if _is_strong_adjacent(S_j, cluster, labels, second_labels):
+                    indivisible[cluster] = True
+                if _is_strong_adjacent(S_i, cluster, labels2, second_labels2) \
+                        or _is_strong_adjacent(S_j, cluster, labels2, second_labels2):
+                    irremovable[cluster] = True
+
+            cluster_centers, labels, second_labels, inertias = cluster_centers2, labels2, second_labels2, inertias2
+            success += 1
 
     return cluster_centers, labels, inertias, n_iter
 
