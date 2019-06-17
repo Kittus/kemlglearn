@@ -74,7 +74,7 @@ def _labels_inertia(X, cluster_centers):
     """Calculate labels and the inertia (cost) functions given a matrix of points and
     a list of centroids for the k-means algorithm. Inertia is divided in clusters and second labels are computed.
     """
-    inertias = np.zeros([cluster_centers.shape[0], 1])
+    inertias = np.zeros(cluster_centers.shape[0])
     labels = np.empty(X.shape[0], dtype='int64')
     second_labels = np.empty(X.shape[0], dtype='int64')
 
@@ -151,8 +151,9 @@ def tkmeans(X, n_clusters, C_i, C_j, cluster_centers, labels, second_labels):
     # Step 1
     AC = {C_i, C_j}
     ACAdj = set([cluster for cluster in range(n_clusters) if _is_adjacent(cluster, C_j, labels, second_labels)])
-    AP = set(np.array(range(X.shape[0]))[labels == C_j or second_labels == C_j])
+    AP = set(np.array(range(X.shape[0]))[np.logical_or(labels == C_j, second_labels == C_j)])
 
+    # Apply changes of centers
     cluster_centers[C_j] = random.choice(X[labels == C_i])
     labels, second_labels, inertias = _labels_inertia(X, cluster_centers)
 
@@ -162,15 +163,15 @@ def tkmeans(X, n_clusters, C_i, C_j, cluster_centers, labels, second_labels):
             for cluster in range(n_clusters):
                 if _is_adjacent(cluster, ac, labels, second_labels):
                     ACAdj.add(cluster)
+            AP = AP.union(set(np.array(range(X.shape[0]))[np.logical_or(labels == ac, second_labels == ac)]))
 
         PotAC = set()
-        AP = AP.union(set(np.array(range(X.shape[0]))[labels in AC or second_labels in AC]))
 
         # Step 3
         for ap in AP:
             diss = np.sum((cluster_centers - X[ap]) ** 2, axis=1)
             clusts = np.argsort(diss)
-            clusts = clusts[clusts in AC or clusts in ACAdj]
+            clusts = np.array([clust for clust in clusts if clust in set(AC) or clust in set(ACAdj)])
 
             if labels[ap] != clusts[0]:
                 PotAC.add(labels[ap])
@@ -253,18 +254,6 @@ def ikmeansminusplus(X, n_clusters, max_iter):
                 break
 
         # Apply changes and t-k-means
-
-        # cluster_centers2 = cluster_centers
-        # cluster_centers2[S_j] = random.choice(X[labels == S_i])
-        # new_labels2, second_labels2, inertias2 = _labels_inertia(X, cluster_centers2)
-        # labels2 = np.ones(new_labels2.shape)
-        #
-        # while np.array_equal(new_labels2, labels2) is False and n_iter < max_iter:
-        #     # Update labels from previous iteration
-        #     labels2 = new_labels2
-        #     # Compute the k-means iteration and increment iteration
-        #     cluster_centers2, new_labels2, second_labels2, inertias2 = kmeans_iter(X, labels2, cluster_centers2)
-
         cluster_centers2, labels2, second_labels2, inertias2 = \
             tkmeans(X, n_clusters, S_i, S_j, cluster_centers, labels, second_labels)
 

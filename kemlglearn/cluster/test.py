@@ -178,40 +178,72 @@ import matplotlib.pyplot as plt
 
 from IKMeansMinusPlus import IKMeansMinusPlus
 import pandas as pd
-import numpy as np
 from sklearn import metrics
-
-
-def purity(trues, preds):
-    return sum(
-        [max(
-            [len([i for i in range(len(preds)) if preds[i] == pred and trues[i] == true]) for true in set(trues)]
-        ) for pred in set(preds)]) / len(trues)
-
+import time
+from sklearn.cluster import KMeans
 
 df = pd.read_csv("C:/Users/Marc/Desktop/MAI/Q2/SEL/PW2/Data/Iris/iris.csv", header=None).values
 X = df[:, :-1].astype(float)
 Y = df[:, -1]
 
-ikmmp = IKMeansMinusPlus(n_clusters=3)
+# df = pd.read_csv("C:/Users/Marc/Desktop/MAI/Q2/URL/Unsupervised/Option B/kemlglearn/kemlglearn/datasets/a3.txt", header=None, sep='   ').values
+# X = df.astype(float)
+
+# df = pd.read_csv("C:/Users/Marc/Desktop/MAI/Q2/URL/Unsupervised/Option B/kemlglearn/kemlglearn/datasets/lr/letter-recognition.data", header=None).values
+# X = df[:, 1:].astype(float)
+
+n_clusters = 3
+
+ikmmp = IKMeansMinusPlus(n_clusters=n_clusters, max_iter=100)
+km = KMeans(n_clusters=n_clusters, init='random', max_iter=100)
+kmpp = KMeans(n_clusters=n_clusters, init='k-means++', max_iter=100)
 
 print("----- Initialization -----")
+t = time.time()
 labels = ikmmp.fit_predict_ini(X)
+t2 = time.time()
 print("Inertia: {}; Iter: {};".format(ikmmp.inertia_, ikmmp.n_iter_))
-print("Purity: {}; Silhouette: {};".format(purity(Y, labels),
-                                            metrics.silhouette_score(X, labels)
+print("Silhouette: {}; Time: {};".format(
+                                            metrics.silhouette_score(X, labels),
+                                            t2 - t
                                             ))
 print("----- Initial K-means -----")
+t = time.time()
 labels = ikmmp.fit_predict_kmeans(X)
+t2 = time.time()
 print("Inertia: {}; Iter: {};".format(ikmmp.inertia_, ikmmp.n_iter_))
-print("Purity: {}; Silhouette: {};".format(purity(Y, labels),
-                                            metrics.silhouette_score(X, labels)
+print("Silhouette: {}; Time: {};".format(
+                                            metrics.silhouette_score(X, labels),
+                                            t2 - t
                                             ))
 print("------ I-K-means+- ------")
+t = time.time()
 labels = ikmmp.fit_predict(X)
+t2 = time.time()
 print("Inertia: {}; Iter: {};".format(ikmmp.inertia_, ikmmp.n_iter_))
-print("Purity: {}; Silhouette: {};".format(purity(Y, labels),
-                                            metrics.silhouette_score(X, labels)
+print("Silhouette: {}; Time: {}".format(
+                                            metrics.silhouette_score(X, labels),
+                                            t2 - t
+                                            ))
+
+print("--- K-means (sklearn) ---")
+t = time.time()
+labels = km.fit_predict(X)
+t2 = time.time()
+print("Inertia: {}; Iter: {};".format(km.inertia_, km.n_iter_))
+print("Silhouette: {}; Time: {}".format(
+                                            metrics.silhouette_score(X, labels),
+                                            t2 - t
+                                            ))
+
+print("-- K-means++ (sklearn) --")
+t = time.time()
+labels = kmpp.fit_predict(X)
+t2 = time.time()
+print("Inertia: {}; Iter: {};".format(kmpp.inertia_, kmpp.n_iter_))
+print("Silhouette: {}; Time: {}".format(
+                                            metrics.silhouette_score(X, labels),
+                                            t2 - t
                                             ))
 
 
